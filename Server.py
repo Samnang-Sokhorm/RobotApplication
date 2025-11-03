@@ -2,104 +2,118 @@ from flask import Flask, request, jsonify
 import time
 import serial
 import json
-x=0
-y=0
-z=0
+
 app = Flask(__name__)
 
 # Try opening serial connection to Arduino
 try:
-    ser = serial.Serial('/dev/ttyACM0', 115200, timeout=0.1)  # Adjust to your port
-    time.sleep(2)  # Give time for Arduino to reset
+    ser = serial.Serial('/dev/ttyACM1', 115200, timeout=0.1)
+    time.sleep(2)
 except serial.SerialException as e:
-    print(f"Error opening serial port: {e}");
-    ser = None  # Handle case where serial port isn't available
+    print(f"Error opening serial port: {e}")
+    ser = None
 
-# Store position data globally
-position_data = {"x": 0.0, "y": 0.0, "z":  0.0}
+# ---- Global state ----
+position_data = {"x": 0.0, "y": 0.0, "z": 0.0}
 last_update_time = time.time()
-data_available = False  # Flag to check if joystick/button data is available
+data_available = False
+last_send = 0
 
-# Function to send position data to Arduino
+
+# ---- Helper function ----
 def send_position_to_arduino():
-    if ser and ser.is_open:
-        position_str = json.dumps(position_data) + "\n"
-        ser.write(position_str.encode())  # Send data to Arduino
-        print(f"Sent to Arduino: {position_str.strip()}")
-    else:
-        print("Serial port not available. Data not sent.")
+    global last_send
+    if time.time() - last_send < 0.05:  # Limit: 20 sends/sec
+        return
+    last_send = time.time()
 
-# Root URL
+    if ser and ser.is_open:
+        try:
+            position_str = json.dumps(position_data) + "\n"
+            ser.write(position_str.encode())
+
+            # Print only when movement is noticeable
+            if abs(position_data["x"]) > 0.01 or abs(position_data["y"]) > 0.01:
+                print(f"Sent to Arduino: {position_str.strip()}")
+        except serial.SerialException as e:
+            print(f"⚠️ Serial write failed: {e}")
+    else:
+        print("⚠️ Serial port not available. Data not sent.")
+
+
+# ---- Routes ----
 @app.route('/')
 def home():
-    return 'Welcome to the server!'
+    return 'Welcome to the robot control server!'
 
-# Update position via POST
+
 @app.route('/update_position', methods=['POST'])
 def update_position():
     global position_data, last_update_time, data_available
 
-    data = request.get_json()
+    data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "Invalid JSON"}), 400
 
-    x, y, z = data.get('x'), data.get('y'), data.get('z')
-    if x is None or y is None or z is None:
-        return jsonify({"error": "Missing x, y, or z values"}), 400
+    new_x = data.get('x')
+    new_y = data.get('y')
+    new_z = data.get('z')
 
-    position_data = {"x": x, "y": y, "z": z}
+    if new_x is None or new_y is None or new_z is None:
+        return jsonify({"error": "Missing x, y, or z"}), 400
+
+    position_data = {"x": new_x, "y": new_y, "z": new_z}
     last_update_time = time.time()
     data_available = True
 
-    print(f"Updated position: X={x}, Y={y}, Z={z}")
+    print(f"Updated position: X={new_x}, Y={new_y}, Z={new_z}")
     send_position_to_arduino()
 
-    return jsonify({"status": "success", "x": x, "y": y, "z": z})
+    return jsonify({"status": "success", **position_data})
 
-# Update joystick data via POST
+
 @app.route('/update_joystick', methods=['POST'])
 def update_joystick():
     global position_data
 
-    data = request.get_json()
+    data = request.get_json(force=True, silent=True)
     if not data:
         return jsonify({"error": "Invalid JSON"}), 400
 
-    joystick_x, joystick_y, button_pressed = data.get('joystick_x'), data.get('joystick_y'), data.get('button_pressed')
-    if joystick_x is None or joystick_y is None or button_pressed is None:
-        return jsonify({"error": "Missing joystick_x, joystick_y, or button_pressed values"}), 400
+    jx = data.get('joystick_x')
+    jy = data.get('joystick_y')
+    btn = data.get('button_pressed')
 
-    position_data['x'] += joystick_x
-    position_data['y'] += joystick_y
-    position_data['z'] = 0  # Example: Z stays at 0 for simplicity
+    if jx is None or jy is None or btn is None:
+        return jsonify({"error": "Missing joystick data"}), 400
 
-    print(f"Joystick moved: X={joystick_x}, Y={joystick_y}, Button={button_pressed}")
+    position_data['x'] += jx
+    position_data['y'] += jy
+    position_data['z'] = 0
+
+    print(f"Joystick: X={jx}, Y={jy}, Button={btn}")
     send_position_to_arduino()
 
     return jsonify({
         "status": "success",
-        "joystick_x": joystick_x,
-        "joystick_y": joystick_y,
-        "button_pressed": button_pressed,
         "new_position": position_data
     })
 
-# Get latest position via GET
+
 @app.route('/get_position', methods=['GET'])
 def get_position():
-    global position_data, data_available
+    global position_data, data_available, last_update_time
 
-    # Reset position if no update in last 0.3 seconds
-    if time.time() - last_update_time > 0.3:
+    # Reset if no update for a while
+    if time.time() - last_update_time > 2.0:
         position_data = {"x": 0.0, "y": 0.0, "z": 0.0}
         data_available = False
 
     return jsonify({
         "data_available": data_available,
-        "x": position_data["x"],
-        "y": position_data["y"],
-        "z": position_data["z"]
+        **position_data
     })
 
+
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
