@@ -41,7 +41,7 @@ android {
 }
 
 dependencies {
-    implementation ("io.socket:socket.io-client:2.0.1")
+    implementation ("io.socket:socket.io-client:2.1.0")
     implementation("org.java-websocket:Java-WebSocket:1.5.3")
     implementation ("com.google.code.gson:gson:2.12.1")
     implementation("com.squareup.okhttp3:okhttp:4.9.3")

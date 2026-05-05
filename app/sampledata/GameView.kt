@@ -37,19 +37,6 @@ class GameView @JvmOverloads constructor(
     private var Zz: Float = 0.0f
     private var LB: Int = 0
     private var RB: Int = 0
-    private var LT: Int = 0
-    private var RT: Int = 0
-    private var M1: Int = 0
-    private var M2: Int = 0
-    private var X1: Int = 0
-    private var Y1: Int = 0
-    private var A1: Int = 0
-    private var B1: Int = 0
-    private var Forw: Int = 0
-    private var Back: Int = 0
-    private var Left: Int = 0
-    private var Right: Int = 0
-
 
 
     private var offsetX = 0f
@@ -100,10 +87,8 @@ class GameView @JvmOverloads constructor(
         )
         canvas.restore()
 
-        canvas.drawText("X: %.2f  Y: %.2f  Z: %.2f".format(Xx, Yy, Zz), 30f, 130f, textPaint)
-        canvas.drawText("LB: $LB  RB: $RB LT $LT RT: $RT X: $X1 Y: $Y1 A: $A1  ", 30f, 170f, textPaint)
-        canvas.drawText("Forw: $Forw Back: $Back Left: $Left Right: $Right", 30f, 210f, textPaint)
-        canvas.drawText("M1: $M1 M2: $M2 B: $B1", 30f, 250f, textPaint)
+        canvas.drawText("X: %.2f  Y: %.2f  Z: %.2f".format(Xx, Yy, Zz), 30f, 50f, textPaint)
+        canvas.drawText("LB: $LB  RB: $RB", 30f, 90f, textPaint)
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.action) {
@@ -129,27 +114,32 @@ class GameView @JvmOverloads constructor(
         return true
     }
 
-    fun updateControllerState(x: Float, y: Float, z: Float, lb: Int, rb: Int, lt: Int, rt: Int, m1: Int, m2: Int, x1: Int, y1: Int, a1: Int,b1: Int, forw: Int, back: Int, left: Int, right: Int) {
+    fun updateControllerState(x: Float, y: Float, z: Float, lb: Int, rb: Int) {
         Xx = x
         Yy = y
         Zz = z
         LB = lb
         RB = rb
-        LT = lt
-        RT = rt
-        M1 = m1
-        M2 = m2
-        X1 = x1
-        Y1 = y1
-        A1 = a1
-        B1 = b1
-        Forw = forw
-        Back = back
-        Left = left
-        Right = right
-
         invalidate()
     }
 
+    // Method to update robot position using odometry data
+    fun updateOdometry(xMeters: Float, yMeters: Float, angleDegrees: Float) {
+        // Convert meters to pixels
+        posX = xMeters * metersToPixels
+        posY = yMeters * metersToPixels
+        theta = angleDegrees
+
+        // Clamp to stay within map boundaries
+        val minX = robotHalfWidth
+        val maxX = mapLengthPixels - robotHalfWidth
+        val minY = robotHalfHeight
+        val maxY = mapWidthPixels - robotHalfHeight
+
+        posX = posX.coerceIn(minX, maxX)
+        posY = posY.coerceIn(minY, maxY)
+
+        invalidate()
+    }
 
 }
